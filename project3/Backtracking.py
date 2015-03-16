@@ -1,5 +1,5 @@
 #Process the data
-class Course:
+class Course:  #Course Information
 	def __init__(self, info):
 		week = ["Mon", "Tue", "Wed", "Th", "Fri"]
 		self.CourseName = info[0]
@@ -16,7 +16,7 @@ class Course:
 			timenum = caltime(time)
 			self.time.append((WeekNum, timenum))
 
-class TA:
+class TA:    #TA Infromation
 	def __init__(self, info):
 		week = ["Mon", "Tue", "Wed", "Th", "Fri"]
 		self.Name = info[0]
@@ -215,16 +215,3 @@ if __name__ == '__main__':
 		for j in range(len(Courseslist[i].TAArrange)):
 			print Courseslist[i].TAArrange[j],
 		print ""
-	# for i in range(len(Courseslist)):
-	# 	print Courseslist[i].CourseName
-	# 	print Courseslist[i].time
-	# 	print Courseslist[i].skill
-	# 	print Courseslist[i].TAnum
-	# for i in range(len(TAlist)):
-	# 	print TAlist[i].Name
-	# 	print TAlist[i].time
-	# 	print TAlist[i].skill
-	# for k, v in Coursesdict.items():
-	# 	print k,v
-	# for k, v in TAdict.items():
-	# 	print k,v

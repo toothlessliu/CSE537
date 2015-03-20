@@ -1,4 +1,5 @@
 import copy
+import Queue
 class Course: #Course, store the Course information
 	def __init__(self, info):
 		week = ["Mon", "Tue", "Wed", "Th", "Fri"]
@@ -53,14 +54,110 @@ def addrecitation(info): #Add recitation to the Course time
 		time = timestr.split(" ")
 		timenum = caltime(time)
 		Courseslist[courseindex].rectime.append((WeekNum, timenum))
+def FullProp(index): #constraint propagation
+	global ValidTA
+	global CourseConflict
+	global Domains
+	global Courseslist
+	myqueue = Queue.Queue()
+	for i in range(len(CourseConflict)): #Add all the edge into queue
+		if(CourseConflict[i][0] >= index or CourseConflict[i][1] >= index):
+			myqueue.put(CourseConflict[i])
+	while myqueue.empty() != True:  #loop until the queue is empty
+		single = myqueue.get()
+		course1 = single[0]
+		course2 = single[1]
+		if(Courseslist[course1].TAnum >= 2 and Courseslist[course2] >= 2):
+			TA1 = []
+			TA2 = []
+			for i in range(len(ValidTA[course1])):   #Calcultae the Course's valid TA
+				newindex = ValidTA[course1][i]
+				if(Domains[course1][newindex] >= 2):
+					TA1.add(newindex)
+			for i in range(len(ValidTA[course2])):
+				newindex = ValidTA[course2][i]
+				if(Domains[course2][newindex] >= 2):
+					TA2.add(newindex)
+			if(len(TA1) == 1):
+				if TA1[0] in TA2:
+					Domains[course2][TA1[0]] = 0     #Delete the conflict TA
+					for i in range(len(CourseConflict)):
+						if(CourseConflict[i][0] == course2 or CourseConflict[i][1] == course2):
+							if CourseConflict[i] not in myqueue:
+								myqueue.put(CourseConflict[i])   #Add the relevant edge into queue
+			if(len(TA2) == 1):
+				if TA2[0] in TA1:
+					Domains[course1][TA2[0]] = 0     #Delete the conflict TA
+					for i in range(len(CourseConflict)):
+						if(CourseConflict[i][0] == course1 or CourseConflict[i][1] == course1):
+							if CourseConflict[i] not in myqueue:
+								myqueue.put(CourseConflict[i]) #Add the relevant edge into queue
 
-def BackTrack(TAflag, index):
+def ForwardCheck(index): #ForwardCheck
+	global Courseslist
+	global Coursesdict
+	global TAdict
+	global TAlist
+	global NoAnswerflag
+	global ValidTA
+	global CourseConflict
+	global Domains
+	totalTA = 0
+	totalneedTA = 0
+	FullProp(index)   #constraint propagation
+	# print "ForwardCheck"
+	# print index
+	for i in range(len(Domains[index])):  #Check whether the total TAnum is bigger than the courses need
+		totalTA = totalTA + Domains[index][i]
+	for i in range(index, len(Courseslist)):
+		totalneedTA = totalneedTA + Courseslist[i].TAnum
+	if(totalTA < totalneedTA): 
+		# print "not enough"
+		NoAnswerflag = 1
+		return
+	for i in range(index, len(Courseslist)):
+		LeftTA = Courseslist[index].TAnum
+		TAsum = 0
+		enough = 0
+		for j in range(len(TAlist)):
+			timeflag = 0
+			skillflag = 0
+			for k in range(len(Courseslist[i].time)): #Check whether the TA's time is valid
+				if((TAlist[j].time[0][0] == Courseslist[i].time[k][0]) and ((TAlist[j].time[0][1] >= (Courseslist[i].time[k][1] - 90)) and (TAlist[j].time[0][1] <= (Courseslist[i].time[k][1] + 90)))):
+					# print "lxc"
+					timeflag = 1
+				if(timeflag == 1):
+					break
+			if(timeflag == 0):  #Check whether the TA's skills are match
+				# print "right time"
+				for m in range(len(Courseslist[i].skill)):
+					for n in range(len(TAlist[j].skill)):
+						if(Courseslist[i].skill[m] == TAlist[j].skill[n]):
+							skillflag = 1
+							break
+					if(skillflag == 1):
+						break
+			if(skillflag == 1): #check this course has enough TA to choose
+				# print "right skill"
+				TAsum = TAsum + Domains[index][j]
+			if(TAsum >= LeftTA):
+				enough = 1
+				break
+		if(enough == 1):
+			continue
+		else:
+			NoAnswerflag = 1
+			return
+
+def BackTrack(index):
 	global Courseslist
 	global Coursesdict
 	global TAdict
 	global TAlist
 	global Answerflag
+	global NoAnswerflag
 	global totalnode
+	global Domains
 	totalnode = totalnode + 1
 	print totalnode
 	if(index == len(Courseslist)): #Finish search return result
@@ -72,12 +169,13 @@ def BackTrack(TAflag, index):
 		# print TAlist[i].Name, 
 		# print Courseslist[index].CourseName
 		# newTAflag = copy.deepcopy(TAflag)
+		NoAnswerflag = 0
 		timeflag = 0
 		skillflag = 0
 		LeftTA = Courseslist[index].TAnum
-		if(LeftTA < 2):   #Choose the half TA
+		if(LeftTA < 2): #Choose the Half TA
 			# print "0.5"
-			if(TAflag[i] >= 1):
+			if(Domains[index][i] >= 1):  
 				for j in range(len(Courseslist[index].time)): #Check whether the TA's time is valid
 					if((TAlist[i].time[0][0] == Courseslist[index].time[j][0]) and ((TAlist[i].time[0][1] >= (Courseslist[index].time[j][1] - 80)) and (TAlist[i].time[0][1] <= (Courseslist[index].time[j][1] + 90)))):
 						# print "lxc"
@@ -92,26 +190,36 @@ def BackTrack(TAflag, index):
 								break
 						if(skillflag == 1):
 							break
-				if(skillflag == 1): #change the relevant domain
-					TAflag[i] = TAflag[i] - 1
+				if(skillflag == 1):  
+					temp = copy.deepcopy(Domains)  #change the relevant domain
+					for x in range(index, len(Courseslist)):
+						Domains[x][i] = Domains[x][i] - 1
 					Courseslist[index].TAnum = Courseslist[index].TAnum - 1
 					Courseslist[index].TAArrange.append((TAlist[i].Name, 0.5))
 					TAlist[i].Course.append((Courseslist[index].CourseName, 0.5))
 					nextindex = index
 					if(Courseslist[index].TAnum == 0):
 						nextindex = index + 1
-					BackTrack(copy.deepcopy(TAflag), nextindex)
+					if(nextindex != len(Courseslist)):
+						ForwardCheck(nextindex)
+					if(NoAnswerflag == 1):
+						del Courseslist[index].TAArrange[-1]
+						del TAlist[i].Course[-1]
+						Courseslist[index].TAnum = Courseslist[index].TAnum + 1
+						Domains = copy.deepcopy(temp)
+						continue
+					BackTrack(nextindex)
 					if(Answerflag == 1):
 						return
 					del Courseslist[index].TAArrange[-1]  #After BackTrack restore the domain
 					del TAlist[i].Course[-1]
 					Courseslist[index].TAnum = Courseslist[index].TAnum + 1
-					TAflag[i] = TAflag[i] + 1
+					Domains = copy.deepcopy(temp)
 		else:
 			# print "1"
-			if(TAflag[i] >= 2):  #Choose the full TA
-				for j in range(len(Courseslist[index].time)):  #Check whether the TA's time is valid
-					if((TAlist[i].time[0][0] == Courseslist[index].time[j][0]) and ((TAlist[i].time[0][1] >= (Courseslist[index].time[j][1] - 90)) and (TAlist[i].time[0][1] <= (Courseslist[index].time[j][1] + 90)))):
+			if(Domains[index][i] >= 2): #Choose the full TA
+				for j in range(len(Courseslist[index].time)): #Check whether the TA's time is valid
+					if((TAlist[i].time[0][0] == Courseslist[index].time[j][0]) and ((TAlist[i].time[0][1] >= (Courseslist[index].time[j][1] - 80)) and (TAlist[i].time[0][1] <= (Courseslist[index].time[j][1] + 90)))):
 						timeflag = 1
 					if(timeflag == 1):
 						break
@@ -124,28 +232,42 @@ def BackTrack(TAflag, index):
 						if(skillflag == 1):
 							break
 				if(skillflag == 1): #change the relevant domain
-					TAflag[i] = TAflag[i] - 2
+					temp = copy.deepcopy(Domains)
+					for x in range(index, len(Courseslist)):
+						Domains[x][i] = Domains[x][i] - 2
 					Courseslist[index].TAnum = Courseslist[index].TAnum - 2
 					Courseslist[index].TAArrange.append((TAlist[i].Name, 1))
 					TAlist[i].Course.append((Courseslist[index].CourseName, 1))
 					nextindex = index
 					if(Courseslist[index].TAnum == 0):
 						nextindex = index + 1
-					BackTrack(copy.deepcopy(TAflag), nextindex)
+					if(nextindex != len(Courseslist)):
+						ForwardCheck(nextindex)
+					if(NoAnswerflag == 1):
+						del Courseslist[index].TAArrange[-1]
+						del TAlist[i].Course[-1]
+						Courseslist[index].TAnum = Courseslist[index].TAnum + 2
+						Domains = copy.deepcopy(temp)
+						continue
+					BackTrack(nextindex)
 					if(Answerflag == 1):
 						return
-					del Courseslist[index].TAArrange[-1]  #After BackTrack restore the domain
+					del Courseslist[index].TAArrange[-1] #After BackTrack restore the domain
 					del TAlist[i].Course[-1]
 					Courseslist[index].TAnum = Courseslist[index].TAnum + 2
-					TAflag[i] = TAflag[i] + 2
+					Domains = copy.deepcopy(temp)
 
 
 Coursesdict = {}
 Courseslist = []
+CourseConflict = []
+ValidTA = []
 TAdict = {}
 TAlist = []
 Result = []
+Domains = []
 Answerflag = 0
+NoAnswerflag = 0
 totalnode = 0
 if __name__ == '__main__':
 	global Courseslist
@@ -153,26 +275,26 @@ if __name__ == '__main__':
 	global TAdict
 	global TAlist
 	global Answerflag
-	datafile = open("dataset_AI_CSP_correct", "r")
+	global ValidTA
+	global CourseConflict
+	global Domains
+	# datafile = open("dataset_AI_CSP_correct", "r")
 	datafile = open("dataset_AI_CSP", "r")
-	for line in datafile: #Block1
+	for line in datafile: #Block 1
 		if(line == "\n"):
 			break;
 		info = line.split(",")
 		newcourse = Course(info)
 		Courseslist.append(newcourse)
-	sum = 0
 	for i in range(len(Courseslist)):
 		Coursesdict[Courseslist[i].CourseName] = i
-		sum = sum + Courseslist[i].TAnum
-	print sum
-	for line in datafile: #Block2
+	for line in datafile: #Block 2
 		if(line == "\n"):
 			break;
 		info = line.split(",")
 		addrecitation(info)
 
-	for line in datafile: #Block3
+	for line in datafile: #Block 3
 		if(line == "\n"):
 			break;
 		info = line.split(",")
@@ -199,8 +321,9 @@ if __name__ == '__main__':
 	for i in range(len(Courseslist)):
 		# Coursesdict[Courseslist[i].CourseName] = i
 		sum = sum + Courseslist[i].TAnum
+		# print Courseslist[i].TAnum
 	# print sum
-	for line in datafile: #Block4
+	for line in datafile: #Block 4
 		if(line == "\n"):
 			break;
 		info = line.split(",")
@@ -209,7 +332,7 @@ if __name__ == '__main__':
 		for i in range(1, len(info)):
 			Courseslist[courseindex].skill.append(info[i].strip())
 
-	for line in datafile: #Block5
+	for line in datafile: #Block 5
 		if(line == "\n"):
 			break;
 		info = line.split(",")
@@ -218,7 +341,7 @@ if __name__ == '__main__':
 	for i in range(len(TAlist)):
 		TAdict[TAlist[i].Name] = i
 
-	for line in datafile: #Block6
+	for line in datafile: #Block 6
 		if(line == "\n"):
 			break;
 		info = line.split(",")
@@ -228,12 +351,48 @@ if __name__ == '__main__':
 		for i in range(1, len(info)):
 			TAlist[TAindex].skill.append(info[i].strip())
 	datafile.close()
+	Domains = [[2 for i in range(len(TAlist))] for j in range(len(Courseslist))]
+	ValidTA = [[] for i in range(len(Courseslist))]
+	for i in range(len(Courseslist)):  #get the course pair which share the same TA
+		for j in range(len(TAlist)):
+			timeflag = 0
+			skillflag = 0
+			for k in range(len(Courseslist[i].time)):
+				if((TAlist[j].time[0][0] == Courseslist[i].time[k][0]) and ((TAlist[j].time[0][1] >= (Courseslist[i].time[k][1] - 90)) and (TAlist[j].time[0][1] <= (Courseslist[i].time[k][1] + 90)))):
+					# print "lxc"
+					timeflag = 1
+				if(timeflag == 1):
+					break
+			if(timeflag == 0):
+				# print "right time"
+				for m in range(len(Courseslist[i].skill)):
+					for n in range(len(TAlist[j].skill)):
+						if(Courseslist[i].skill[m] == TAlist[j].skill[n]):
+							skillflag = 1
+							break
+					if(skillflag == 1):
+						break
+			if(skillflag == 1):
+				ValidTA[i].append(j)
+	for i in range(len(Courseslist)):   #get the TA which is valid for the course
+		for j in range(i + 1, len(Courseslist)):
+			conflictflag = 0
+			for k in range(len(ValidTA[i])):
+				for l in range(len(ValidTA[j])):
+					if(ValidTA[i][k] == ValidTA[j][l]):
+						CourseConflict.append((i, j))
+						conflictflag = 1
+					if(conflictflag == 1):
+						break
+				if(conflictflag == 1):
+					break
+	# print CourseConflict
 
 	TAflag = [2 for i in range(len(TAlist))]
 	Courseindex = 0
-	BackTrack(copy.deepcopy(TAflag), Courseindex) #Backtrack
-	result = open("BackTrack", "w")
-	if(Answerflag == 1):  #Store the result
+	BackTrack(Courseindex)   #Backtrack
+	result = open("BackTrack+ForwardCheck+CP", "w")
+	if(Answerflag == 1):     #Store the result
 		for i in range(len(Courseslist)):
 			result.write(Courseslist[i].CourseName)
 			for j in range(len(Courseslist[i].TAArrange)):
@@ -254,16 +413,3 @@ if __name__ == '__main__':
 	else:
 		result.write("No Answer!\n")
 	result.close()
-	# for i in range(len(Courseslist)):
-	# 	print Courseslist[i].CourseName
-	# 	print Courseslist[i].time
-	# 	print Courseslist[i].skill
-	# 	print Courseslist[i].TAnum
-	# for i in range(len(TAlist)):
-	# 	print TAlist[i].Name
-	# 	print TAlist[i].time
-	# 	print TAlist[i].skill
-	# for k, v in Coursesdict.items():
-	# 	print k,v
-	# for k, v in TAdict.items():
-	# 	print k,v
